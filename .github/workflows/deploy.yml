@@ -1,0 +1,80 @@
+name: Deploy MkDocs Site
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          pip install mkdocs mkdocs-material
+          curl -fsSL https://rclone.org/install.sh | bash
+
+      - name: Sync from data capsule
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+          rclone sync data-capsule:huarenjian/vault-hrj /tmp/notes
+
+      - name: Generate & build
+        run: |
+          rm -rf docs && mkdir docs
+          rsync -am --include='*/' --include='*.md' --exclude='*' /tmp/notes/ docs/
+          python3 -c "
+import os, yaml
+def scan(path, base=''):
+    items = []
+    for e in sorted(os.listdir(path)):
+        f = os.path.join(path, e)
+        r = os.path.join(base, e) if base else e
+        if os.path.isdir(f):
+            c = scan(f, r)
+            if c:
+                items.append({e: c})
+        elif e.endswith('.md') and e != 'index.md':
+            items.append({e[:-3]: r})
+    return items
+cfg = {
+    'site_name': '自动化知识笔记',
+    'site_url': 'https://huarenjian1.github.io/',
+    'theme': {
+        'name': 'material',
+        'language': 'zh',
+        'features': ['navigation.instant', 'navigation.top', 'search.suggest', 'search.highlight'],
+        'palette': [{'scheme': 'default', 'primary': 'indigo', 'accent': 'indigo'}]
+    },
+    'markdown_extensions': ['pymdownx.arithmatex', 'pymdownx.superfences'],
+    'extra_javascript': ['javascripts/mathjax.js', 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'],
+    'nav': [{'首页': 'index.md'}] + scan('docs')
+}
+with open('mkdocs.yml', 'w', encoding='utf-8') as f:
+    yaml.dump(cfg, f, allow_unicode=True, sort_keys=False)
+print('mkdocs.yml generated')
+"
+          mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/deploy-pages@v4
