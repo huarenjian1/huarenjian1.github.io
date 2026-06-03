@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p ~/.config/rclone
           echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
-          rclone sync data-capsule:huarenjian/vault-hrj /tmp/notes
+          rclone sync data-capsule:huarenjian/vault-hrj /tmp/notes --include "*.md"
 
       - name: Generate & build
         run: |
