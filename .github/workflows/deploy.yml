@@ -1,7 +1,8 @@
 name: Deploy MkDocs Site
 on:
-  schedule:
-    - cron: '*/30 * * * *'
+  push:
+    branches: [main]
+    paths: ['docs/**', 'mkdocs.yml', 'generate-nav.py']
   workflow_dispatch:
 
 permissions:
@@ -23,23 +24,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install deps
-        run: |
-          pip install mkdocs mkdocs-material pyyaml
-          curl -fsSL https://rclone.org/install.sh | sudo bash
-
-      - name: Sync from data capsule
-        env:
-          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
-        run: |
-          mkdir -p ~/.config/rclone
-          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
-          rclone sync data-capsule:huarenjian/vault-hrj /tmp/notes --include "*.md"
+      - run: pip install mkdocs mkdocs-material pyyaml
 
       - name: Generate & build
         run: |
-          rm -rf docs && mkdir docs
-          rsync -am --include='*/' --include='*.md' --exclude='*' /tmp/notes/ docs/
           python3 generate-nav.py
           mkdocs build --strict
 
